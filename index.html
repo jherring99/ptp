@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Periodic Table Trainer</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'><text y='32' font-size='32'>⚗</text></svg>" />
+  <link rel="stylesheet" href="https://pyscript.net/releases/2024.1.1/core.css" />
+  <link rel="stylesheet" href="style.css" />
+  <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
+</head>
+<body>
+
+  <nav id="sidebar">
+    <h2>⚗ Trainer</h2>
+    <a href="#" onclick="showPage('quiz')">Quiz</a>
+    <a href="#" onclick="showPage('elements')">Elements</a>
+    <a href="#" onclick="showPage('reference')">Reference</a>
+    <a href="#" onclick="showPage('progress')">Progress</a>
+  </nav>
+
+  <main id="content">
+
+    <!-- ── PAGE: QUIZ ── -->
+    <div id="page-quiz" class="page">
+      <h1>Quiz</h1>
+
+      <div id="quiz-controls">
+        <label>Prompt:
+          <select id="prompt-field">
+            <option value="number">Atomic Number</option>
+            <option value="symbol">Symbol</option>
+            <option value="name">Name</option>
+          </select>
+        </label>
+        <label>Answer:
+          <select id="answer-field">
+            <option value="name">Name</option>
+            <option value="symbol">Symbol</option>
+            <option value="number">Atomic Number</option>
+          </select>
+        </label>
+        <button id="new-question-btn">New Question</button>
+      </div>
+
+      <p id="quiz-prompt">Press "New Question" to begin.</p>
+
+      <div id="periodic-table-quiz" class="periodic-table"></div>
+
+      <div id="quiz-answer-area" style="display:none">
+        <input id="quiz-input" type="text" placeholder="Your answer..." autocomplete="off" />
+        <button id="submit-btn">Submit</button>
+        <p id="quiz-feedback"></p>
+      </div>
+    </div>
+
+    <!-- ── PAGE: ELEMENTS ── -->
+    <div id="page-elements" class="page" style="display:none">
+      <h1>Elements</h1>
+      <div id="element-list-controls">
+        <button id="check-all-btn">Check All</button>
+        <button id="uncheck-all-btn">Uncheck All</button>
+      </div>
+      <table id="element-table">
+        <thead>
+          <tr>
+            <th>Include</th>
+            <th>#</th>
+            <th>Symbol</th>
+            <th>Name</th>
+          </tr>
+        </thead>
+        <tbody id="element-table-body">
+          <!-- filled by Python -->
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── PAGE: REFERENCE ── -->
+    <div id="page-reference" class="page" style="display:none">
+      <h1>Reference</h1>
+      <div id="periodic-table-ref" class="periodic-table"></div>
+    </div>
+
+    <!-- ── PAGE: PROGRESS ── -->
+    <div id="page-progress" class="page" style="display:none">
+      <h1>Progress</h1>
+      <p id="progress-rate">No attempts yet.</p>
+      <table id="progress-table">
+        <thead>
+          <tr><th>Element</th><th>Prompted</th><th>Expected</th><th>Your Answer</th><th>Result</th></tr>
+        </thead>
+        <tbody id="progress-body">
+          <!-- filled by Python -->
+        </tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <script>
+    // Page switching: hide all .page divs, show the target one.
+    function showPage(name) {
+      document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
+      document.getElementById('page-' + name).style.display = 'block';
+    }
+  </script>
+
+  <script type="py" src="app.py"></script>
+</body>
+</html>
