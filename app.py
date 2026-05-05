@@ -18,7 +18,7 @@ Key PyScript DOM calls used here:
 """
 
 import random
-from js import document
+from js import document, console, window
 from pyodide.ffi import create_proxy
 
 
@@ -170,8 +170,10 @@ BY_NUMBER = {e["number"]: e for e in ELEMENTS}
 # ─────────────────────────────────────────────────────────────────────────────
 
 current_element = None   # the element being quizzed on right now
-history = []             # list of result dicts: {element, prompt_field, answer_field,
-                         #   expected, given, correct}
+history = []             # list of result dicts
+revealed = set()         # atomic numbers of correctly answered elements
+revealed  = set()        # atomic numbers of correctly answered elements
+included  = {el["number"] for el in ELEMENTS}  # atomic numbers selected for quizzing (all by default)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -179,13 +181,8 @@ history = []             # list of result dicts: {element, prompt_field, answer_
 # ─────────────────────────────────────────────────────────────────────────────
 
 def get_checked_elements():
-    """Return list of elements whose checkbox is checked on the Elements page."""
-    checked = []
-    for el in ELEMENTS:
-        checkbox = document.getElementById(f"check-{el['number']}")
-        if checkbox and checkbox.checked:
-            checked.append(el)
-    return checked
+    """Return list of elements currently included in the quiz."""
+    return [el for el in ELEMENTS if el["number"] in included]
 
 
 def get_field_value(el, field):
@@ -198,15 +195,45 @@ def get_field_value(el, field):
         return el["name"]
 
 
+def cell_background(number):
+    """Return the correct background colour for a quiz cell based on its state."""
+    if number not in included:
+        return "#ccc"       # unchecked — grey
+    if number in revealed:
+        return "#c8f0c8"    # correctly answered — green
+    return ""               # active quiz cell — default
+
+
 def highlight_cell(element):
-    """Remove highlight from all cells, then highlight the given element's cell."""
-    # Clear previous highlight
-    for cell in document.querySelectorAll("#periodic-table-quiz .el-cell"):
-        cell.classList.remove("highlighted")
-    # Add highlight to the matching cell
+    """Restore all cells to their correct background, then highlight the target."""
+    for el in ELEMENTS:
+        cell = document.getElementById(f"quiz-cell-{el['number']}")
+        if cell:
+            cell.style.background = cell_background(el["number"])
     cell = document.getElementById(f"quiz-cell-{element['number']}")
     if cell:
-        cell.classList.add("highlighted")
+        cell.style.background = "#ffe066"
+
+
+def reveal_cell(element):
+    """Show symbol and number on a quiz cell, marking it as permanently revealed."""
+    revealed.add(element["number"])
+    cell = document.getElementById(f"quiz-cell-{element['number']}")
+    if cell:
+        cell.innerHTML = f'<span class="el-sym">{element["symbol"]}</span><span class="el-num">{element["number"]}</span>'
+        cell.style.background = "#c8f0c8"  # light green to distinguish revealed cells
+
+
+def reset_quiz(event=None):
+    """Clear all revealed cells and reset the quiz state."""
+    global current_element
+    revealed.clear()
+    current_element = None
+    # Redraw the quiz table from scratch
+    build_quiz_table()
+    document.getElementById("quiz-prompt").textContent = 'Press "New Question" to begin.'
+    document.getElementById("quiz-answer-area").style.display = "none"
+    document.getElementById("quiz-feedback").textContent = ""
 
 
 def normalize(text):
@@ -221,24 +248,47 @@ def normalize(text):
 # show_labels=False → quiz table (blank cells)
 # ─────────────────────────────────────────────────────────────────────────────
 
-def build_table(container_id, show_labels, cell_id_prefix):
-    container = document.getElementById(container_id)
+def build_quiz_table():
+    """Draw the quiz table. Checked elements are blank; unchecked are greyed out
+    and pre-revealed (since they are not part of the quiz). Already-revealed
+    elements are shown in green."""
+    container = document.getElementById("periodic-table-quiz")
     container.innerHTML = ""
+    checked_numbers = included  # use Python-tracked set, not DOM
 
     for el in ELEMENTS:
         cell = document.createElement("div")
         cell.className = "el-cell"
-        cell.id = f"{cell_id_prefix}-{el['number']}"
-        # CSS grid placement: row and col stored directly on the element dict
-        cell.style.gridRow = str(el["row"])
-        cell.style.gridColumn = str(el["col"])
-        if show_labels:
-            cell.innerHTML = f"<b>{el['symbol']}</b><br/>{el['number']}"
+        cell.id = f"quiz-cell-{el['number']}"
+        cell.setAttribute("style", f"grid-row:{el['row']}; grid-column:{el['col']}")
+
+        if el["number"] not in checked_numbers:
+            # Unchecked: show label, grey background
+            cell.innerHTML = f'<span class="el-sym">{el["symbol"]}</span><span class="el-num">{el["number"]}</span>'
+            cell.style.background = "#ccc"
+        elif el["number"] in revealed:
+            # Correctly answered: show label, green background
+            cell.innerHTML = f'<span class="el-sym">{el["symbol"]}</span><span class="el-num">{el["number"]}</span>'
+            cell.style.background = "#c8f0c8"
+        # else: checked and not yet revealed — leave blank with default background
+
         container.appendChild(cell)
 
 
-build_table("periodic-table-quiz", show_labels=False, cell_id_prefix="quiz-cell")
-build_table("periodic-table-ref",  show_labels=True,  cell_id_prefix="ref-cell")
+def build_ref_table():
+    """Draw the static reference table with all labels."""
+    container = document.getElementById("periodic-table-ref")
+    container.innerHTML = ""
+    for el in ELEMENTS:
+        cell = document.createElement("div")
+        cell.className = "el-cell"
+        cell.setAttribute("style", f"grid-row:{el['row']}; grid-column:{el['col']}")
+        cell.innerHTML = f'<span class="el-sym">{el["symbol"]}</span><span class="el-num">{el["number"]}</span>'
+        container.appendChild(cell)
+
+
+build_quiz_table()
+build_ref_table()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -251,9 +301,11 @@ def build_element_list():
 
     for el in ELEMENTS:
         row = document.createElement("tr")
+        num = el['number']  # avoid quote conflict inside f-string
         row.innerHTML = (
-            f'<td><input type="checkbox" id="check-{el["number"]}" checked /></td>'
-            f'<td>{el["number"]}</td>'
+            f'<td><input type="checkbox" id="check-{num}" checked'
+            f' onchange="toggle_element_js({num})" /></td>'
+            f'<td>{num}</td>'
             f'<td>{el["symbol"]}</td>'
             f'<td>{el["name"]}</td>'
         )
@@ -267,7 +319,7 @@ build_element_list()
 # QUIZ LOGIC
 # ─────────────────────────────────────────────────────────────────────────────
 
-def new_question(event=None):
+def new_question(event=None, keep_feedback=False):
     global current_element
 
     checked = get_checked_elements()
@@ -278,7 +330,18 @@ def new_question(event=None):
         document.getElementById("quiz-answer-area").style.display = "none"
         return
 
-    current_element = random.choice(checked)
+    # Exclude already-revealed elements from the pool
+    pool = [e for e in checked if e["number"] not in revealed]
+    if not pool:
+        document.getElementById("quiz-prompt").textContent = (
+            "All selected elements revealed! Press Reset to start over."
+        )
+        document.getElementById("quiz-answer-area").style.display = "none"
+        return
+    # Avoid repeating the same element, unless it is the only one left
+    if len(pool) > 1 and current_element in pool:
+        pool.remove(current_element)
+    current_element = random.choice(pool)
 
     prompt_field  = document.getElementById("prompt-field").value
     answer_field  = document.getElementById("answer-field").value
@@ -295,7 +358,8 @@ def new_question(event=None):
     document.getElementById("quiz-prompt").textContent = (
         f"{prompt_field.capitalize()}: {prompt_value}"
     )
-    document.getElementById("quiz-feedback").textContent = ""
+    if not keep_feedback:
+        document.getElementById("quiz-feedback").textContent = ""
     document.getElementById("quiz-input").value = ""
     document.getElementById("quiz-answer-area").style.display = "block"
     document.getElementById("quiz-input").focus()
@@ -332,6 +396,10 @@ def submit_answer(event=None):
         "correct":      correct,
     })
 
+    if correct:
+        reveal_cell(current_element)
+        new_question(keep_feedback=True)
+
     update_progress()
 
 
@@ -347,15 +415,19 @@ def on_input_keydown(event):
 
 def check_all(event=None):
     for el in ELEMENTS:
+        included.add(el["number"])
         cb = document.getElementById(f"check-{el['number']}")
         if cb:
             cb.checked = True
+    build_quiz_table()
 
 def uncheck_all(event=None):
     for el in ELEMENTS:
+        included.discard(el["number"])
         cb = document.getElementById(f"check-{el['number']}")
         if cb:
             cb.checked = False
+    build_quiz_table()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -400,3 +472,17 @@ document.getElementById("submit-btn").addEventListener("click", create_proxy(sub
 document.getElementById("quiz-input").addEventListener("keydown", create_proxy(on_input_keydown))
 document.getElementById("check-all-btn").addEventListener("click", create_proxy(check_all))
 document.getElementById("uncheck-all-btn").addEventListener("click", create_proxy(uncheck_all))
+document.getElementById("reset-btn").addEventListener("click", create_proxy(reset_quiz))
+
+# Expose functions to JS so inline onchange handlers on checkboxes can call them.
+window._build_quiz_table = create_proxy(build_quiz_table)
+
+def _toggle_element(number):
+    """Toggle one element in/out of the included set and redraw the quiz table."""
+    if number in included:
+        included.discard(number)
+    else:
+        included.add(number)
+    build_quiz_table()
+
+window._toggle_element = create_proxy(_toggle_element)

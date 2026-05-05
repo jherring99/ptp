@@ -41,6 +41,7 @@
           </select>
         </label>
         <button id="new-question-btn">New Question</button>
+        <button id="reset-btn">Reset</button>
       </div>
 
       <p id="quiz-prompt">Press "New Question" to begin.</p>
@@ -106,6 +107,15 @@
     }
   </script>
 
+  <script>
+    // Bridges so inline onchange handlers on checkboxes can call back into Python.
+    function build_quiz_table_js() {
+      if (window._build_quiz_table) window._build_quiz_table();
+    }
+    function toggle_element_js(number) {
+      if (window._toggle_element) window._toggle_element(number);
+    }
+  </script>
   <script type="py" src="app.py"></script>
 </body>
 </html>
