@@ -19,6 +19,7 @@ Key PyScript DOM calls used here:
 
 import random
 from js import document, console, window
+import json
 from pyodide.ffi import create_proxy
 
 
@@ -172,13 +173,23 @@ BY_NUMBER = {e["number"]: e for e in ELEMENTS}
 current_element = None   # the element being quizzed on right now
 history = []             # list of result dicts
 revealed = set()         # atomic numbers of correctly answered elements
-revealed  = set()        # atomic numbers of correctly answered elements
-included  = {el["number"] for el in ELEMENTS}  # atomic numbers selected for quizzing (all by default)
+
+# Load included set from localStorage, falling back to all elements if nothing saved.
+_saved = window.localStorage.getItem("included_elements")
+if _saved:
+    included = set(json.loads(_saved))
+else:
+    included = {el["number"] for el in ELEMENTS}
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # HELPERS
 # ─────────────────────────────────────────────────────────────────────────────
+
+def save_included():
+    """Persist the included set to localStorage so it survives page refreshes."""
+    window.localStorage.setItem("included_elements", json.dumps(list(included)))
+
 
 def get_checked_elements():
     """Return list of elements currently included in the quiz."""
@@ -222,6 +233,7 @@ def reveal_cell(element):
     if cell:
         cell.innerHTML = f'<span class="el-sym">{element["symbol"]}</span><span class="el-num">{element["number"]}</span>'
         cell.style.background = "#c8f0c8"  # light green to distinguish revealed cells
+        cell.title = element["name"]  # hover text now that it's revealed
 
 
 def reset_quiz(event=None):
@@ -254,7 +266,6 @@ def build_quiz_table():
     elements are shown in green."""
     container = document.getElementById("periodic-table-quiz")
     container.innerHTML = ""
-    checked_numbers = included  # use Python-tracked set, not DOM
 
     for el in ELEMENTS:
         cell = document.createElement("div")
@@ -262,17 +273,26 @@ def build_quiz_table():
         cell.id = f"quiz-cell-{el['number']}"
         cell.setAttribute("style", f"grid-row:{el['row']}; grid-column:{el['col']}")
 
-        if el["number"] not in checked_numbers:
-            # Unchecked: show label, grey background
+        if el["number"] not in included:
             cell.innerHTML = f'<span class="el-sym">{el["symbol"]}</span><span class="el-num">{el["number"]}</span>'
             cell.style.background = "#ccc"
+            cell.title = el["name"]  # hover text for unchecked (already visible)
         elif el["number"] in revealed:
-            # Correctly answered: show label, green background
             cell.innerHTML = f'<span class="el-sym">{el["symbol"]}</span><span class="el-num">{el["number"]}</span>'
             cell.style.background = "#c8f0c8"
-        # else: checked and not yet revealed — leave blank with default background
+            cell.title = el["name"]  # hover text only after correctly answered
+        # else: checked and not yet revealed — no title, no cheating!
 
         container.appendChild(cell)
+
+    # Resize text to match current cell size after (re)building.
+    # Guard: set_table_size is defined later in the file; on the very first
+    # call (at startup) it doesn't exist yet, so we skip — it will be called
+    # explicitly once defined.
+    try:
+        set_table_size()
+    except NameError:
+        pass
 
 
 def build_ref_table():
@@ -283,7 +303,13 @@ def build_ref_table():
         cell = document.createElement("div")
         cell.className = "el-cell"
         cell.setAttribute("style", f"grid-row:{el['row']}; grid-column:{el['col']}")
-        cell.innerHTML = f'<span class="el-sym">{el["symbol"]}</span><span class="el-num">{el["number"]}</span>'
+        url = f'https://en.wikipedia.org/wiki/{el["name"]}'
+        name = el["name"]
+        sym = el["symbol"]
+        num = el["number"]
+        cell.innerHTML = (
+            f'<a class="el-link" href="{url}" target="_blank" title="{name}"><span class="el-sym">{sym}</span><span class="el-num">{num}</span></a>'
+        )
         container.appendChild(cell)
 
 
@@ -301,15 +327,28 @@ def build_element_list():
 
     for el in ELEMENTS:
         row = document.createElement("tr")
-        num = el['number']  # avoid quote conflict inside f-string
+        num = el["number"]
         row.innerHTML = (
-            f'<td><input type="checkbox" id="check-{num}" checked'
-            f' onchange="toggle_element_js({num})" /></td>'
+            f'<td><input type="checkbox" id="check-{num}"'
+            + (' checked' if num in included else '')
+            + ' /></td>'
             f'<td>{num}</td>'
             f'<td>{el["symbol"]}</td>'
             f'<td>{el["name"]}</td>'
         )
         tbody.appendChild(row)
+        # Wire the checkbox change event directly in Python
+        cb = document.getElementById(f"check-{num}")
+        def make_toggle(n):
+            def handler(event):
+                if n in included:
+                    included.discard(n)
+                else:
+                    included.add(n)
+                save_included()
+                build_quiz_table()
+            return handler
+        cb.addEventListener("change", create_proxy(make_toggle(num)))
 
 
 build_element_list()
@@ -419,6 +458,7 @@ def check_all(event=None):
         cb = document.getElementById(f"check-{el['number']}")
         if cb:
             cb.checked = True
+    save_included()
     build_quiz_table()
 
 def uncheck_all(event=None):
@@ -427,6 +467,7 @@ def uncheck_all(event=None):
         cb = document.getElementById(f"check-{el['number']}")
         if cb:
             cb.checked = False
+    save_included()
     build_quiz_table()
 
 
@@ -467,22 +508,102 @@ def update_progress():
 # WIRE UP EVENT LISTENERS
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Quiz page buttons
 document.getElementById("new-question-btn").addEventListener("click", create_proxy(new_question))
 document.getElementById("submit-btn").addEventListener("click", create_proxy(submit_answer))
 document.getElementById("quiz-input").addEventListener("keydown", create_proxy(on_input_keydown))
-document.getElementById("check-all-btn").addEventListener("click", create_proxy(check_all))
-document.getElementById("uncheck-all-btn").addEventListener("click", create_proxy(uncheck_all))
 document.getElementById("reset-btn").addEventListener("click", create_proxy(reset_quiz))
 
-# Expose functions to JS so inline onchange handlers on checkboxes can call them.
-window._build_quiz_table = create_proxy(build_quiz_table)
+# Elements page buttons
+document.getElementById("check-all-btn").addEventListener("click", create_proxy(check_all))
+document.getElementById("uncheck-all-btn").addEventListener("click", create_proxy(uncheck_all))
 
-def _toggle_element(number):
-    """Toggle one element in/out of the included set and redraw the quiz table."""
-    if number in included:
-        included.discard(number)
+# ─────────────────────────────────────────────────────────────────────────────
+# MOBILE / RESPONSIVE LAYOUT
+# MOBILE_BREAKPOINT is the single source of truth for when mobile mode kicks in.
+# Python adds/removes the "mobile" class on <body>; CSS rules keyed on
+# "body.mobile" activate accordingly. This avoids duplicating the value in CSS.
+# MAX_CELL_SIZE caps the table on wide desktop screens.
+# ─────────────────────────────────────────────────────────────────────────────
+
+MOBILE_BREAKPOINT = 600   # px — change here to adjust everywhere
+MAX_CELL_SIZE     = 40    # px — table stops growing beyond this cell size
+
+
+def close_sidebar(event=None):
+    document.getElementById("sidebar").classList.remove("open")
+    document.getElementById("sidebar-overlay").style.display = "none"
+
+
+def toggle_sidebar(event=None):
+    """Open the sidebar if closed, close it if open."""
+    sidebar = document.getElementById("sidebar")
+    if "open" in sidebar.classList:
+        close_sidebar()
     else:
-        included.add(number)
-    build_quiz_table()
+        sidebar.classList.add("open")
+        document.getElementById("sidebar-overlay").style.display = "block"
 
-window._toggle_element = create_proxy(_toggle_element)
+
+document.getElementById("hamburger").addEventListener("click", create_proxy(toggle_sidebar))
+document.getElementById("sidebar-overlay").addEventListener("click", create_proxy(close_sidebar))
+
+
+def set_table_size():
+    """Resize the periodic table cells to fit the available width.
+    Also applies or removes mobile layout based on MOBILE_BREAKPOINT."""
+    is_mobile = window.innerWidth < MOBILE_BREAKPOINT
+
+    # Apply or remove mobile CSS class on <body>
+    if is_mobile:
+        document.body.classList.add("mobile")
+    else:
+        document.body.classList.remove("mobile")
+        close_sidebar()  # ensure sidebar is closed if window is widened
+
+    sidebar_w = 0 if is_mobile else 120   # sidebar not in flow on mobile
+    padding   = 24 if not is_mobile else 24
+    available = window.innerWidth - sidebar_w - padding
+
+    # The table is 18 columns + 17 gaps of 2px each.
+    # Solve: 18*cell + 17*2 = available  →  cell = (available - 34) / 18
+    cell_size = int((available - 34) / 18)
+    cell_size = max(8, min(cell_size, MAX_CELL_SIZE))  # clamp to [8, MAX_CELL_SIZE]
+
+    # Font sizes scale proportionally to cell size.
+    # At cell=40: sym=12px (ratio 0.30), num=9px (ratio 0.22).
+    sym_size = max(5, round(cell_size * 0.30))
+    num_size = max(4, round(cell_size * 0.22))
+
+    for table_id in ["periodic-table-quiz", "periodic-table-ref"]:
+        table = document.getElementById(table_id)
+        if table:
+            table.style.setProperty("--cell-size", f"{cell_size}px")
+
+    for span in document.querySelectorAll(".el-sym"):
+        span.style.fontSize = f"{sym_size}px"
+    for span in document.querySelectorAll(".el-num"):
+        span.style.fontSize = f"{num_size}px"
+
+
+set_table_size()
+# Recalculate on window resize (catches phone rotation too)
+window.addEventListener("resize", create_proxy(lambda e: set_table_size()))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SIDEBAR NAVIGATION
+# ─────────────────────────────────────────────────────────────────────────────
+
+def show_page(page_id):
+    for div in ["quiz", "elements", "reference", "progress"]:
+        document.getElementById(f"page-{div}").style.display = "none" if div != page_id else "block"
+
+def make_nav(page_id):
+    def handler(event):
+        event.preventDefault()
+        close_sidebar()  # auto-close sidebar after navigation on mobile
+        show_page(page_id)
+    return handler
+
+for page in ["quiz", "elements", "reference", "progress"]:
+    document.getElementById(f"nav-{page}").addEventListener("click", create_proxy(make_nav(page)))

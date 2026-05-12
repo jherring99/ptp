@@ -11,12 +11,19 @@
 </head>
 <body>
 
+  <!-- Hamburger button — only visible on mobile (CSS hides it on desktop) -->
+  <button id="hamburger">☰</button>
+
+  <!-- Dim overlay shown behind the sidebar when it is open on mobile -->
+  <div id="sidebar-overlay"></div>
+
   <nav id="sidebar">
     <h2>⚗ Trainer</h2>
-    <a href="#" onclick="showPage('quiz')">Quiz</a>
-    <a href="#" onclick="showPage('elements')">Elements</a>
-    <a href="#" onclick="showPage('reference')">Reference</a>
-    <a href="#" onclick="showPage('progress')">Progress</a>
+    <!-- Nav links have no onclick — Python wires these up via event listeners -->
+    <a id="nav-quiz"      href="#">Quiz</a>
+    <a id="nav-elements"  href="#">Elements</a>
+    <a id="nav-reference" href="#">Reference</a>
+    <a id="nav-progress"  href="#">Progress</a>
   </nav>
 
   <main id="content">
@@ -99,23 +106,6 @@
 
   </main>
 
-  <script>
-    // Page switching: hide all .page divs, show the target one.
-    function showPage(name) {
-      document.querySelectorAll('.page').forEach(p => p.style.display = 'none');
-      document.getElementById('page-' + name).style.display = 'block';
-    }
-  </script>
-
-  <script>
-    // Bridges so inline onchange handlers on checkboxes can call back into Python.
-    function build_quiz_table_js() {
-      if (window._build_quiz_table) window._build_quiz_table();
-    }
-    function toggle_element_js(number) {
-      if (window._toggle_element) window._toggle_element(number);
-    }
-  </script>
   <script type="py" src="app.py"></script>
 </body>
 </html>

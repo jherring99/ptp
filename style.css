@@ -34,6 +34,30 @@ body {
   color: white;
 }
 
+/* Hamburger button — hidden on desktop */
+#hamburger {
+  display: none;
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 1000;
+  background: #222;
+  color: white;
+  border: none;
+  font-size: 20px;
+  padding: 6px 10px;
+  cursor: pointer;
+}
+
+/* Dim overlay behind open sidebar on mobile — hidden by default */
+#sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;           /* shorthand for top/right/bottom/left: 0 */
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 500;
+}
+
 #content {
   padding: 24px;
   flex: 1;
@@ -42,14 +66,12 @@ body {
 
 /* ── PERIODIC TABLE GRID ── */
 
-/* Standard 18-column periodic table grid.
-   Each .el-cell is positioned via inline grid-column / grid-row styles
-   set by Python. The grid has 10 rows: 1-7 for main table,
-   9-10 for lanthanides/actinides (row 8 is a spacer). */
+/* Cell size is set dynamically by Python via inline style on the container.
+   The grid columns and rows use that variable so everything scales together. */
 .periodic-table {
   display: grid;
-  grid-template-columns: repeat(18, 40px);
-  grid-template-rows: repeat(10, 40px);
+  grid-template-columns: repeat(18, var(--cell-size, 40px));
+  grid-template-rows: repeat(10, var(--cell-size, 40px));
   gap: 2px;
   margin: 16px 0;
 }
@@ -67,25 +89,18 @@ body {
 }
 
 .el-sym {
-  font-size: 12px;
+  /* Font size is set inline by Python, relative to cell size */
   font-weight: bold;
   line-height: 1;
 }
 
 .el-num {
-  font-size: 9px;
   line-height: 1;
 }
 
 /* Quiz table: blank cells (no text) */
 #periodic-table-quiz .el-cell {
   background: #eee;
-}
-
-/* Highlighted cell on quiz page */
-.el-cell.highlighted {
-  background: #ffe066;
-  border-color: #999;
 }
 
 /* ── QUIZ CONTROLS ── */
@@ -166,3 +181,53 @@ body {
 
 .result-correct { color: green; }
 .result-wrong   { color: red;   }
+
+/* Reference table: the whole cell is a link.
+   el-link fills the cell and stacks children the same way el-cell does. */
+#periodic-table-ref .el-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  width: 100%;
+  height: 100%;
+  color: #0066cc;
+  text-decoration: none;
+}
+
+#periodic-table-ref .el-link:hover {
+  text-decoration: underline;
+}
+
+/* ── MOBILE ──
+   Mobile layout is applied by Python in app.py, not by a media query here.
+   This keeps the breakpoint value in one place (MOBILE_BREAKPOINT in app.py).
+   Python adds/removes the "mobile" class on <body> based on window width,
+   and these rules activate when that class is present. */
+
+/* Sidebar in mobile mode: fixed position, slides in from the left */
+body.mobile #sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  z-index: 600;
+  transform: translateX(-100%);
+  transition: transform 0.2s ease;
+  /* Extra top padding so nav links clear the hamburger button */
+  padding-top: 52px;
+}
+
+body.mobile #sidebar.open {
+  transform: translateX(0);
+}
+
+body.mobile #hamburger {
+  display: block;
+}
+
+body.mobile #content {
+  /* Extra top padding so content clears the hamburger button */
+  padding: 48px 12px 24px 12px;
+}
