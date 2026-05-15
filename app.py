@@ -234,6 +234,7 @@ def reveal_cell(element):
         cell.innerHTML = f'<span class="el-sym">{element["symbol"]}</span><span class="el-num">{element["number"]}</span>'
         cell.style.background = "#c8f0c8"  # light green to distinguish revealed cells
         cell.title = element["name"]  # hover text now that it's revealed
+        set_table_size()
 
 
 def reset_quiz(event=None):
@@ -527,7 +528,7 @@ document.getElementById("uncheck-all-btn").addEventListener("click", create_prox
 # ─────────────────────────────────────────────────────────────────────────────
 
 MOBILE_BREAKPOINT = 600   # px — change here to adjust everywhere
-MAX_CELL_SIZE     = 40    # px — table stops growing beyond this cell size
+MAX_CELL_SIZE     = 48    # px — table stops growing beyond this cell size
 
 
 def close_sidebar(event=None):
@@ -562,7 +563,7 @@ def set_table_size():
         close_sidebar()  # ensure sidebar is closed if window is widened
 
     sidebar_w = 0 if is_mobile else 120   # sidebar not in flow on mobile
-    padding   = 24 if not is_mobile else 24
+    padding   = 36
     available = window.innerWidth - sidebar_w - padding
 
     # The table is 18 columns + 17 gaps of 2px each.
